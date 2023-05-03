@@ -54,7 +54,7 @@ def Sh(Re, temp):
     return sherwood
 
 def beta_p(Re,temp,d_p):
-    beta = Sh(Re,temp) * D_O2(temp) / d_p
+    beta = Sh(Re,temp) * D_O2(temp) / (d_p/2)
     return beta
 
 def mass_to_diameter(mass_Fe, mass_FeO):
@@ -272,9 +272,10 @@ def Cp_air(temp):
 def D_O2(temp):
     k_O2 = lambda_O2(temp)
     r_O2 = pressure * (W_O2) * X_O2 / (R * temp)
+    r_air = rho_air(temp)
     Cp_O2 = O2_data("cp",temp) / (W_O2)
 
-    D = k_O2 / r_O2 / Cp_O2 
+    D = k_O2 / r_air / Cp_O2 
     return D
 
 # ------------------------------------------------------------------------------

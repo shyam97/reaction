@@ -1,8 +1,8 @@
 delta_0 = 1e-3          # initial ratio of X/d_p 
-dp_0 = 20e-6            # initial diameter of iron particle in m
-Tg_0 = 1000             # initial gas temperature in K
-Tp_0 = 1000              # initial particle temperature in K
-end = 100e-3            # total simulation time in seconds
+dp_0 = 54e-6            # initial diameter of iron particle in m
+Tg_0 = 300             # initial gas temperature in K
+Tp_0 = 1270              # initial particle temperature in K
+end = 50e-3            # total simulation time in seconds
 tstep = 1e-5            # timestep in seconds
 Re = 0                  # background flow Reynolds number
 pressure = 1.01325e5    # ambient pressure in Pa

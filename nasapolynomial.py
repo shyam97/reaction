@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from functions import *
-from nasaPoly import *
+# from nasaPoly import *
 
 # T = 1200
 # nasaPoly.listSpecies()
@@ -11,22 +11,23 @@ from nasaPoly import *
 print("Viscosity of air at 1000K =", Mu_air(1000))
 print("Thermal conductivity of air at 1000K =", lambda_air(1000))
 print("Cp of air at 1000K =", Cp_air(1000))
-print("Density of air at 1000K =", rho_air(1000))
-print("Diffusivity of O2 at 300K =", D_O2(300))
+print("Density of air at 1000K =", rho_air(1696.7))
+print("Density of O2 at 1696.7K =", rho_O2(1696.7))
+print("Diffusivity of O2 at 1696.7K =", D_O2(1696.7))
 print("Cp of O2 at 1000K =",O2_data('cp',1000)/(W_O2/1000))
 print("Cp of N2 at 1000K =",N2_data('cp',1000)/(W_N2/1000))
 
-# T = np.linspace(1080,1290,num=3000)
-# H = np.zeros_like(T)
+T = np.linspace(800,1290,num=3000)
+H = np.zeros_like(T)
 
-# for i in range(len(H)):
-#     H[i] = Fe_data('h',T[i])
+for i in range(len(H)):
+    H[i] = Fe_data('h',T[i])
 
-# plt.figure()
-# plt.plot(T,H)
-# plt.xlabel('T [K]')
-# plt.ylabel(' H [J/mol]')
-# plt.savefig('CpvsT_corrected.png')
+plt.figure()
+plt.plot(T,H)
+plt.xlabel('T [K]')
+plt.ylabel(' H [J/mol]')
+plt.savefig('images/HvsT_corrected.png')
 
 # print(Fe_data('h',1183.99997))
 # print(Fe_data('h',1183.99999))

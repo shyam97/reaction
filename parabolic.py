@@ -56,7 +56,7 @@ nu_O2_FeO = W_O2 / W_FeO
 nu_Fe_O2 = W_Fe / W_O2
 nu_FeO_O2 = W_FeO / W_O2
 
-print(nu_O2_FeO, nu_FeO_O2, nu_Fe_O2)
+# print(nu_O2_FeO, nu_FeO_O2, nu_Fe_O2)
 
 Hp = m_Fe / (W_Fe) * Fe_data('h',Tp) + m_FeO / (W_FeO) * FeO_data('h',Tp)
 
@@ -80,7 +80,7 @@ if debug:
         os.remove(debugfile)
 
     log = open(debugfile,'w')
-    log.write('[mdot_O2_r , mdot_O2_dmax , mdot_O2 , H1 , H2 , H3 , Hdot]\n')
+    # log.write('[mdot_O2_r , mdot_O2_dmax , mdot_O2 , H1 , H2 , H3 , Hdot]\n')
 
 # LOOP STARTS HERE
 
@@ -89,7 +89,10 @@ while time <= end:
     Tf = (2*Tp + Tg)/3
 
     mdot_O2_r = -nu_O2_FeO * area(dp) * rho_FeO * k0_FeO / X_FeO * np.exp(-Ta_FeO/Tp)
-    mdot_O2_dmax = -area(dp) * beta_p(Re,Tf,dp) * rho_O2(Tg)
+    mdot_O2_dmax = -area(dp) * beta_p(Re,Tf,dp) * rho_O2(Tf)
+
+    # MAKE X_O2 CORRECTION
+    # MAKE EVAPORATION
 
     if mdot_O2_r < mdot_O2_dmax:
         mdot_O2 = mdot_O2_dmax
@@ -104,8 +107,19 @@ while time <= end:
         mdot_O2 = 0
         mdot_FeO = 0
     
-    Hdot = -H0_FeO / (W_FeO) * mdot_FeO - O2_data('h',Tf) / (W_O2) * mdot_O2 \
-        - area(dp)*h_p(Re,Tf,dp)*(Tp - Tf)
+    Hdot = -H0_FeO / (W_FeO) * mdot_FeO - O2_data('h',Tg) / (W_O2) * mdot_O2 \
+        - area(dp)*h_p(Re,Tf,dp/2)*(Tp - Tg)
+    
+    # DEBUG
+
+    if debug:
+        H1 = - H0_FeO / (W_FeO) * mdot_FeO
+        H2 = - O2_data('h',Tf) / (W_O2) * mdot_O2
+        H3 = - area(dp)*h_p(Re,Tf,dp)*(Tp - Tf)
+        logs = [Tp, Tg, -mdot_O2_r,-mdot_O2_dmax,-mdot_O2,mdot_FeO, H1,H3,H2,Hdot]
+        for s in logs:
+            log.write('%.8e ' %s)
+        log.write('\n')
     
     # UPDATE VARIABLES
     
@@ -115,6 +129,19 @@ while time <= end:
     [dp_Fe,X_FeO,dp] = mass_to_diameter(m_Fe,m_FeO)
     
     Hp += Hdot * tstep 
+
+    # NEWTON-RAPHSON
+
+    # Tp = newton(Tp_eqn, x0=Tp, args=(m_Fe,m_FeO,Hp),maxiter=1000,tol=1)
+
+    try:
+        Tp = newton(Tp_eqn, x0=Tp, args=(m_Fe,m_FeO,Hp),maxiter=1000,tol=1)
+    except:
+        print('Error!')
+        break
+
+    # if Tp>2000:
+    #     break
 
     # SAVE VARIABLES
 
@@ -130,37 +157,16 @@ while time <= end:
     O2_mdot_r.append(mdot_O2_r)
     O2_mdot.append(mdot_O2)
 
-    # DEBUG
-
-    if debug:
-        H1 = H0_FeO / (W_FeO) * mdot_FeO
-        H2 = - O2_data('h',Tf) / (W_O2) * mdot_O2
-        H3 = - area(dp)*h_p(Re,Tf,dp)*(Tp - Tf)
-        logs = [mdot_O2_r,mdot_O2_dmax,mdot_O2,H1,H2,H3,Hdot]
-        for s in logs:
-            log.write('%.8e , ' %s)
-        log.write('\n')
-
     if m_Fe<0:
         print('Holup bro!')
         break
-
-    # NEWTON-RAPHSON
-
-    Tp = newton(Tp_eqn, x0=Tp, args=(m_Fe,m_FeO,Hp),maxiter=1000,tol=1)
-
-    # try:
-    #     Tp = newton(Tp_eqn, x0=Tp, args=(m_Fe,m_FeO,Hp),maxiter=1000,tol=1)
-    # except:
-    #     print('Error!')
-    #     break
 
     # WRAP UP AND CONTINUE
 
     time+=tstep
     iter+=1
 
-    print(np.round(time*1000,3),'ms, T =',np.round(Tp, 3),'K,', int(time/end*100), '%% done.', end='\r') 
+    print(np.round(time*1000,3),'ms, T =',np.round(Tp, 3),'K,', int(time/end*100), '%% done.')#, end='\r') 
 
 if debug:
     log.close()
