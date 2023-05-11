@@ -1,5 +1,8 @@
 import numpy as np
 import os
+import cantera as ct
+
+gas = ct.Solution('air_iron3.yaml')
 
 # DERIVED VARIABLES ------------------------------------------------------------
 
@@ -14,7 +17,7 @@ with open(filename,'r') as file:
         vals = lines.split()
         data.append(float(vals[2]))
 
-[delta_0, dp_0, Tg_0, Tp_0, end, tstep, Re, pressure, debug] = data
+[delta_0, dp_0, Tg_0, Tp_0, end, tstep, Re, pressure, debug, evapflag, radflag] = data
 
 # ==============================================================================
 
@@ -26,35 +29,37 @@ H0_FeO = -266269.76 # enthalpy of formation of FeO in J/mol at 273.15 K
 rho_Fe = 7874       # density of Fe in kg/m3
 rho_FeO = 5745      # density of FeO in kg/m3
 epsilon = 0.88      # emissivity of Fe3O4 
+sigma = 5.67e-8     # Stefan-Boltzmann constant in W/m2K4
 W_Fe = 55.845*1e-3  # molar weight of Fe in g/mol
 W_FeO = 71.844*1e-3 # molar weight of FeO in g/mol
 W_O = 15.999*1e-3   # molar weight of O in g/mol
 W_O2 = 31.999*1e-3  # molar weight of O2 in g/mol
 W_N2 = 28.0134*1e-3 # molar weight of N2 in g/mol
 R = 8.3144598       # real gas constant in J/mol/K
-X_N2 = 0.7808       # mole fraction of N2 in air
-X_O2 = 0.2095       # mole fraction of O2 in air
+# X_N2 = 0.7808       # mole fraction of N2 in air
+# X_O2 = 0.2095       # mole fraction of O2 in air
+factor = 1/2        # boundary layer factor 
 
 # ==============================================================================
 
-def h_p(Re,temp,dp):
-    nusselt = Nu(Re, temp)
-    lambda_g = lambda_air(temp)
+def h_p(Re,temp,dp,X_O2):
+    nusselt = Nu(Re,temp,X_O2)
+    lambda_g = lambda_air(temp,X_O2)
     hp = nusselt * lambda_g / dp
     return hp
 
-def Nu(Re, temp):
-    Pr = Mu_air(temp) * Cp_air(temp) / lambda_air(temp)
+def Nu(Re,temp,X_O2):
+    Pr = Mu_air(temp,X_O2) * Cp_air(temp,X_O2) / lambda_air(temp,X_O2)
     nusselt = 2 + 0.552 * Re**0.5 * Pr**0.333
     return nusselt
 
-def Sh(Re, temp):
-    Sc = Mu_air(temp) / rho_air(temp) / D_O2(temp)
+def Sh(Re,temp,X_O2):
+    Sc = Mu_air(temp,X_O2) / rho_air(temp,X_O2) / D_O2(temp,X_O2)
     sherwood = 2 + 0.552 * Re**0.5 * Sc**0.333
     return sherwood
 
-def beta_p(Re,temp,d_p):
-    beta = Sh(Re,temp) * D_O2(temp) / (d_p/2)
+def beta_p(Re,temp,d_p,X_O2):
+    beta = Sh(Re,temp,X_O2) * D_O2(temp,X_O2) / d_p 
     return beta
 
 def mass_to_diameter(mass_Fe, mass_FeO):
@@ -69,13 +74,93 @@ def area(diameter):
     return A
 
 def Tp_eqn(temp, m_Fe, m_FeO, Hp):
-    val_Fe = m_Fe / (W_Fe) * Fe_data('h',temp)
-    val_FeO = m_FeO / (W_FeO) * FeO_data('h',temp)
+    val_Fe = m_Fe / W_Fe * Fe_data('h',temp)
+    val_FeO = m_FeO / W_FeO * FeO_data('h',temp) #- H0_FeO / W_FeO * m_FeO
     return val_Fe + val_FeO - Hp
 
 def Tp_prime(temp, m_Fe, m_FeO, Hp):
-    Cp_tot = m_Fe / (W_Fe) * Fe_data('cp',temp) + m_FeO / (W_FeO) * FeO_data('cp',temp)
+    Cp_tot = m_Fe / W_Fe * Fe_data('cp',temp) + m_FeO / W_FeO * FeO_data('cp',temp)
     return Cp_tot
+
+# ==============================================================================
+
+def evap(species,Re,Tp,X_O2,dp):
+    R = 8.3144598
+
+    if species == 'Fe':
+        kd = kd_Fe(Re,Tp,X_O2,dp)
+        pvap = pvap_Fe(Tp)
+        return kd * pvap / R / Tp
+
+    elif species == 'FeO':
+        k_FeFeO = kd_FeO(Re,Tp,X_O2,dp)
+        pv_FeFeO = pvap_FeFeO(Tp)
+
+        k_FeO = kd_FeO(Re,Tp,X_O2,dp)
+        pv_FeO = pvap_FeO(Tp)
+
+        return (k_FeO * pv_FeO + k_FeFeO * pv_FeFeO) / R / Tp
+
+    return 0
+
+# ==============================================================================
+
+def kd_Fe(Re,temp,X_O2,dp):
+
+    gas.TPX = temp, pressure, {'O2':X_O2, 'N2':1-X_O2}
+
+    D_Fe = gas.mix_diff_coeffs[gas.species_index('Fe')]
+
+    Sc = gas.viscosity/gas.density/D_Fe
+    Sh = 2 + 0.6 * Re**0.5 * Sc**(1/3)
+
+    return Sh * D_Fe / dp
+
+def kd_FeO(Re,temp,X_O2,dp):
+
+    gas.TPX = temp, pressure, {'O2':X_O2, 'N2':1-X_O2}
+
+    D_FeO = gas.mix_diff_coeffs[gas.species_index('FeO')]
+
+    Sc = gas.viscosity/gas.density/D_FeO
+    Sh = 2 + 0.6 * Re**0.5 * Sc**(1/3)
+
+    return Sh * D_FeO / dp
+
+# ==============================================================================
+
+def pvap_Fe(Tp):
+    A1 = 35.4
+    A2 = -4.963e4
+    A3 = -2.433
+
+    term1 = A1
+    term2 = A2 / Tp
+    term3 = A3 * np.log(Tp)
+
+    return np.exp(term1 + term2 + term3)
+
+def pvap_FeFeO(Tp):
+    A1 = 62.08
+    A2 = -6.412e4
+    A3 = -5.399
+
+    term1 = A1
+    term2 = A2 / Tp
+    term3 = A3 * np.log(Tp)
+
+    return np.exp(term1 + term2 + term3)
+
+def pvap_FeO(Tp):
+    A1 = 52.93
+    A2 = -6.48e4
+    A3 = -4.37
+
+    term1 = A1
+    term2 = A2 / Tp
+    term3 = A3 * np.log(Tp)
+
+    return np.exp(term1 + term2 + term3)
 
 # ==============================================================================
 
@@ -233,49 +318,70 @@ def O2_data(param,temp):
     
 # ------------------------------------------------------------------------------
 
-def rho_O2(temp):
+def rho_O2(temp,X_O2):
     R = 8.3144598
-    r_O2 = X_O2 * pressure / (R * temp) * (W_O2)
+    r_O2 = X_O2 * W_O2 * pressure / (R * temp)
     return r_O2
 
 # ------------------------------------------------------------------------------
 
-def rho_air(temp):
-    R = 8.3144598
-    r_air =  ((W_O2) * X_O2 + (W_N2) * X_N2) * pressure / (R * temp)
-    return r_air
+def rho_air(temp,X_O2):
+
+    # R = 8.3144598
+    # X_N2 = 1 - X_O2
+    # r_air =  ((W_O2) * X_O2 + (W_N2) * X_N2) * pressure / (R * temp)
+
+    gas.TPX = temp, pressure, {'O2':X_O2, 'N2':1 - X_O2}
+    return gas.density
 
 # ------------------------------------------------------------------------------
 
-def lambda_air(temp):
-    sum1 = X_N2 * lambda_N2(temp) + X_O2 * lambda_O2(temp)
-    sum2 = X_N2 / lambda_N2(temp) + X_O2 / lambda_O2(temp)
-    k_air = 0.5 * (sum1 + 1/sum2)
-    return k_air
+def lambda_air(temp,X_O2):
+
+    # X_N2 = 1 - X_O2
+    # sum1 = X_N2 * lambda_N2(temp) + X_O2 * lambda_O2(temp)
+    # sum2 = X_N2 / lambda_N2(temp) + X_O2 / lambda_O2(temp)
+    # k_air = 0.5 * (sum1 + 1/sum2)
+
+    gas.TPX = temp, pressure, {'O2':X_O2, 'N2':1-X_O2}
+    return gas.thermal_conductivity
 
 # ------------------------------------------------------------------------------
 
-def Mu_air(temp):
-    sum1 = X_N2 * eta_N2(temp) + X_O2 * eta_O2(temp)
-    sum2 = X_N2 / eta_N2(temp) + X_O2 / eta_O2(temp)
-    eta_air = 0.5 * (sum1 + 1/sum2)
-    return eta_air
+def Mu_air(temp, X_O2):
+
+    # X_N2 = 1 - X_O2
+    # sum1 = X_N2 * eta_N2(temp) + X_O2 * eta_O2(temp)
+    # sum2 = X_N2 / eta_N2(temp) + X_O2 / eta_O2(temp)
+    # eta_air = 0.5 * (sum1 + 1/sum2)
+
+    gas.TPX = temp, pressure, {'O2':X_O2, 'N2':1-X_O2}
+    return gas.viscosity
 
 # ------------------------------------------------------------------------------
 
-def Cp_air(temp):
-    sum = X_N2 * N2_data("cp",temp) / (W_N2) + X_O2 * O2_data("cp",temp) / (W_O2)
-    return sum
+def Cp_air(temp, X_O2):
+
+    # X_N2 = 1 - X_O2
+    # sum = X_N2 * N2_data("cp",temp) / (W_N2) + X_O2 * O2_data("cp",temp) / (W_O2)
+
+    gas.TPX = temp, pressure, {'O2':X_O2, 'N2':1-X_O2}
+    return gas.cp
 
 # ------------------------------------------------------------------------------
 
-def D_O2(temp):
-    k_O2 = lambda_O2(temp)
-    r_O2 = pressure * (W_O2) * X_O2 / (R * temp)
-    r_air = rho_air(temp)
-    Cp_O2 = O2_data("cp",temp) / (W_O2)
+def D_O2(temp,X_O2):
 
-    D = k_O2 / r_air / Cp_O2 
+    # k_O2 = lambda_O2(temp)
+    # k_air = lambda_air(temp,X_O2)
+    # r_air = rho_air(temp,X_O2)
+    # r_O2 = rho_O2(temp,1)
+    # Cp_O2 = O2_data("cp",temp) / (W_O2) #* X_O2
+    # Le = 1.11
+    # D_old = k_O2 / r_O2 / Cp_O2 / Le
+
+    gas.TPX = temp, pressure, {'O2':X_O2, 'N2':1-X_O2}
+    D = gas.mix_diff_coeffs[gas.species_index('O2')]
     return D
 
 # ------------------------------------------------------------------------------
@@ -349,15 +455,6 @@ def FeO_data(param,temp):
     R = 8.3144598
 
     intervals = [298.15,1652,6000]
-
-    # poly0 = [0.000000000e+00, 0.000000000e+00, 5.319547500e+00, 2.209659100e-03,
-    #          1.072177500e-06, -2.792972900e-09, 1.332073300e-12, -3.440716500e+04]
-    
-    # poly1 = [0.000000000e+00, 0.000000000e+00, 5.831648900e+00, 1.427515600e-03,
-    #          -9.320814300e-08, -6.599776300e-12, -2.251214300e-14, -3.456690200e+04]
-    
-    # poly2 = [0.000000000e+00, 0.000000000e+00, 8.202248200e+00, 0.000000000e+00, 
-    #          0.000000000e+00, 0.000000000e+00, 0.000000000e+00,-3.384861500e+04]
     
     poly0 = [-1.179193966e+04, 1.388393372e+02, 2.999841854e+00, 1.274527210e-02,
              -1.883886065e-05, 1.274258345e-08, -3.042206479e-12, -3.417350500e+04]
@@ -405,3 +502,18 @@ def FeO_data(param,temp):
         return Cp
 
 # ==============================================================================
+
+def h_Fe_g(Tp):
+    gas_Fe = ct.Solution('air_iron3.yaml')
+    gas_Fe.TPY = Tp, pressure, {'Fe':1}
+
+    return gas_Fe.enthalpy_mass
+
+def h_FeO_g(Tp):
+    gas_FeO = ct.Solution('air_iron3.yaml')
+    gas_FeO.TPY = Tp, pressure, {'FeO':1}
+
+    return gas_FeO.enthalpy_mass
+
+# ===============================================================================
+

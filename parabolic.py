@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import newton
 from functions import *
 import os
+import cantera
 
 # DERIVED VARIABLES ------------------------------------------------------------
 
@@ -17,7 +18,7 @@ with open(filename,'r') as file:
         vals = lines.split()
         data.append(float(vals[2]))
 
-[delta_0, dp_0, Tg_0, Tp_0, end, tstep, Re, pressure, debug] = data
+[delta_0, dp_0, Tg_0, Tp_0, end, tstep, Re, pressure, debug, evapflag, radflag] = data
 
 # ==============================================================================
 
@@ -29,14 +30,16 @@ H0_FeO = -266269.76 # enthalpy of formation of FeO in J/mol at 273.15 K
 rho_Fe = 7874       # density of Fe in kg/m3
 rho_FeO = 5745      # density of FeO in kg/m3
 epsilon = 0.88      # emissivity of Fe3O4 
+sigma = 5.67e-8     # Stefan-Boltzmann constant in W/m2K4
 W_Fe = 55.845*1e-3  # molar weight of Fe in g/mol
 W_FeO = 71.844*1e-3 # molar weight of FeO in g/mol
 W_O = 15.999*1e-3   # molar weight of O in g/mol
 W_O2 = 31.999*1e-3  # molar weight of O2 in g/mol
 W_N2 = 28.0134*1e-3 # molar weight of N2 in g/mol
 R = 8.3144598       # real gas constant in J/mol/K
-X_N2 = 0.7808       # mole fraction of N2 in air
+# X_N2 = 0.7808       # mole fraction of N2 in air
 X_O2 = 0.2095       # mole fraction of O2 in air
+factor = 1/2        # boundary layer factor   
 
 # ==============================================================================
 
@@ -52,9 +55,9 @@ m_FeO = np.pi / 6 * ( dp**3 - dp_Fe**3 ) * rho_FeO
 Tp = Tp_0
 Tg = Tg_0
 
-nu_O2_FeO = W_O2 / W_FeO
-nu_Fe_O2 = W_Fe / W_O2
-nu_FeO_O2 = W_FeO / W_O2
+nu_O2_FeO = 0.5 * W_O2 / W_FeO
+nu_Fe_O2 = W_Fe / W_O2 / 0.5
+nu_FeO_O2 = W_FeO / W_O2 / 0.5
 
 # print(nu_O2_FeO, nu_FeO_O2, nu_Fe_O2)
 
@@ -70,6 +73,8 @@ times = []
 temps, Fe_mass, FeO_mass, Hdots, FeO_X, Hps = ([] for list in range(6))
 O2_mdot_max, O2_mdot_r, O2_mdot = ([] for list in range(3))
 
+# SETUP DEBUG FILE
+
 if debug:
 
     print(dp_Fe, X_FeO, m_Fe, m_FeO, Hp, Tp)
@@ -80,43 +85,67 @@ if debug:
         os.remove(debugfile)
 
     log = open(debugfile,'w')
-    # log.write('[mdot_O2_r , mdot_O2_dmax , mdot_O2 , H1 , H2 , H3 , Hdot]\n')
 
 # LOOP STARTS HERE
 
 while time <= end:
 
-    Tf = (2*Tp + Tg)/3
+    Tf = (1-factor)*Tp + factor*Tg
+    X_O2_f = X_O2*factor
 
-    mdot_O2_r = -nu_O2_FeO * area(dp) * rho_FeO * k0_FeO / X_FeO * np.exp(-Ta_FeO/Tp)
-    mdot_O2_dmax = -area(dp) * beta_p(Re,Tf,dp) * rho_O2(Tf)
+    mdot_O2_r = -nu_O2_FeO * area(dp) * rho_FeO * k0_FeO / X_FeO * np.exp(-Ta_FeO/Tp) # KINETIC RATE
+    mdot_O2_dmax = -area(dp) * beta_p(Re,Tf,dp,X_O2_f) * rho_O2(Tf,X_O2) # EXTERNAL DIFFUSION RATE
 
-    # MAKE X_O2 CORRECTION
-    # MAKE EVAPORATION
+    # SWITCH BETWEEN KINETICS AND EXTERNAL DIFFUSION
 
     if mdot_O2_r < mdot_O2_dmax:
         mdot_O2 = mdot_O2_dmax
     else:
         mdot_O2 = mdot_O2_r
 
-    mdot_FeO = -nu_FeO_O2 * mdot_O2
-    mdot_Fe = nu_Fe_O2 * mdot_O2
+    # EVAPORATION TERMS
+
+    if evapflag:
+        mdot_Fe_evap = m_Fe * area(dp_Fe) * evap('Fe',Re,Tp,X_O2_f,dp) 
+        mdot_FeO_evap = m_FeO * area(dp) * evap('FeO',Re,Tp,X_O2_f,dp)
+        evapterms = - mdot_Fe_evap * h_Fe_g(Tp) - mdot_FeO_evap * h_FeO_g(Tp)
+    else:
+        mdot_Fe_evap = 0
+        mdot_FeO_evap = 0
+        evapterms = 0
+
+    # RADIATION TERMS 
+
+    if radflag:
+        radterms = -sigma * epsilon * (Tp**4 - Tg**4)
+    else:
+        radterms = 0
+
+    # UPDATE MASS
+
+    mdot_FeO = -nu_FeO_O2 * mdot_O2 - mdot_FeO_evap
+    mdot_Fe = nu_Fe_O2 * mdot_O2 - mdot_FeO_evap
 
     if m_Fe + mdot_Fe * tstep < 0:
         mdot_Fe = 0
         mdot_O2 = 0
-        mdot_FeO = 0
+        if m_FeO + mdot_FeO * tstep < 0:
+            mdot_FeO = 0
+        else:
+            mdot_FeO = -mdot_FeO_evap
+
+    # FIND CHANGE IN ENTHALPY
     
-    Hdot = -H0_FeO / (W_FeO) * mdot_FeO - O2_data('h',Tg) / (W_O2) * mdot_O2 \
-        - area(dp)*h_p(Re,Tf,dp/2)*(Tp - Tg)
+    Hdot = - O2_data('h',Tp) / (W_O2) * mdot_O2 - area(dp)*h_p(Re,Tf,dp,X_O2_f)*(Tp - Tg) \
+            + evapterms + radterms #-H0_FeO / (W_FeO) * mdot_FeO
     
     # DEBUG
 
     if debug:
         H1 = - H0_FeO / (W_FeO) * mdot_FeO
-        H2 = - O2_data('h',Tf) / (W_O2) * mdot_O2
-        H3 = - area(dp)*h_p(Re,Tf,dp)*(Tp - Tf)
-        logs = [Tp, Tg, -mdot_O2_r,-mdot_O2_dmax,-mdot_O2,mdot_FeO, H1,H3,H2,Hdot]
+        H2 = - O2_data('h',Tg) / (W_O2) * mdot_O2
+        H3 = - area(dp)*h_p(Re,Tf,dp,X_O2_f)*(Tp - Tg)
+        logs = [time, Tp, Tg, -mdot_O2_r,-mdot_O2_dmax,-mdot_O2,mdot_FeO, H1,H3,H2,Hdot, Hp, m_Fe, m_FeO, dp/2]
         for s in logs:
             log.write('%.8e ' %s)
         log.write('\n')
@@ -132,16 +161,11 @@ while time <= end:
 
     # NEWTON-RAPHSON
 
-    # Tp = newton(Tp_eqn, x0=Tp, args=(m_Fe,m_FeO,Hp),maxiter=1000,tol=1)
-
     try:
         Tp = newton(Tp_eqn, x0=Tp, args=(m_Fe,m_FeO,Hp),maxiter=1000,tol=1)
     except:
         print('Error!')
         break
-
-    # if Tp>2000:
-    #     break
 
     # SAVE VARIABLES
 
@@ -156,10 +180,6 @@ while time <= end:
     O2_mdot_max.append(mdot_O2_dmax)
     O2_mdot_r.append(mdot_O2_r)
     O2_mdot.append(mdot_O2)
-
-    if m_Fe<0:
-        print('Holup bro!')
-        break
 
     # WRAP UP AND CONTINUE
 
