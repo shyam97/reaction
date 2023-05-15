@@ -77,7 +77,7 @@ O2_mdot_max, O2_mdot_r, O2_mdot = ([] for list in range(3))
 
 if debug:
 
-    print(dp_Fe, X_FeO, m_Fe, m_FeO, Hp, Tp)
+    # print(dp_Fe, X_FeO, m_Fe, m_FeO, Hp, Tp)
 
     debugfile = 'debug.txt'
 
@@ -117,22 +117,31 @@ while time <= end:
     # RADIATION TERMS 
 
     if radflag:
-        radterms = -sigma * epsilon * (Tp**4 - Tg**4)
+        radterms = -sigma * epsilon * area(dp) * (Tp**4 - Tg**4)
     else:
         radterms = 0
 
     # UPDATE MASS
 
     mdot_FeO = -nu_FeO_O2 * mdot_O2 - mdot_FeO_evap
-    mdot_Fe = nu_Fe_O2 * mdot_O2 - mdot_FeO_evap
+    mdot_Fe = nu_Fe_O2 * mdot_O2 - mdot_Fe_evap
 
+    # if m_Fe + mdot_Fe * tstep < 0:
+    #     mdot_Fe = 0
+    #     mdot_O2 = 0
+    #     if m_FeO + mdot_FeO * tstep < 0:
+    #         mdot_FeO = 0
+    #     else:
+    #         mdot_FeO = -mdot_FeO_evap
+    
     if m_Fe + mdot_Fe * tstep < 0:
-        mdot_Fe = 0
-        mdot_O2 = 0
+        mdot_Fe = -m_Fe/tstep
+        mdot_O2 = 1/nu_Fe_O2*mdot_Fe
+
         if m_FeO + mdot_FeO * tstep < 0:
             mdot_FeO = 0
         else:
-            mdot_FeO = -mdot_FeO_evap
+            mdot_FeO = -nu_FeO_O2 * mdot_O2 -mdot_FeO_evap
 
     # FIND CHANGE IN ENTHALPY
     
@@ -217,8 +226,8 @@ axs[1].set_xlim([0,times[-1]])
 fig.tight_layout()
 fig.savefig('rates.png')
 
-plt.figure(num=1, figsize=(10,10))
-fig,axs = plt.subplots(nrows=2, ncols=2, figsize=(10,10))
+plt.figure(num=1, figsize=(6,6),dpi=300)
+fig,axs = plt.subplots(nrows=2, ncols=2, figsize=(6,6))
 axs[0,0].plot(times, temps)
 axs[0,0].set_xlabel('$t$ [ms]')
 axs[0,0].set_ylabel('$T_\mathrm{p}$ [K]')
