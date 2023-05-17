@@ -6,6 +6,5 @@ end = 50e-3             # total simulation time in seconds
 tstep = 1e-5            # timestep in seconds
 Re = 0                  # background flow Reynolds number
 pressure = 1.01325e5    # ambient pressure in Pa
-debug = 1               # debug mode
 evapflag = 0            # evaporation
 radflag = 0             # radiation

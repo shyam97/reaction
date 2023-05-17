@@ -1,3 +1,5 @@
 /__pycache__
-/images/
-/archive/
+temperature.png
+properties.png
+rates.png
+.gitignore
