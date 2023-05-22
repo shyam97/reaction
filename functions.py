@@ -9,17 +9,8 @@ gas = ct.Solution('air_iron3.yaml')
 W_Fe = 55.845*1e-3  # molar weight of Fe in g/mol
 W_FeO = 71.844*1e-3 # molar weight of FeO in g/mol
 W_O2 = 31.999*1e-3  # molar weight of O2 in g/mol
-
-# ==============================================================================
-
-def Tp_eqn(temp, m_Fe, m_FeO, Hp):
-    val_Fe = m_Fe / W_Fe * Fe_data('h',temp)
-    val_FeO = m_FeO / W_FeO * FeO_data('h',temp) #- H0_FeO / W_FeO * m_FeO
-    return val_Fe + val_FeO - Hp
-
-def Tp_prime(temp, m_Fe, m_FeO, Hp):
-    Cp_tot = m_Fe / W_Fe * Fe_data('cp',temp) + m_FeO / W_FeO * FeO_data('cp',temp)
-    return Cp_tot
+Fe_intervals = [200,500,800,1042,1184,1665,1809,6000]
+FeO_intervals = [298.15,1652,6000]
 
 # ==============================================================================
 
@@ -114,55 +105,31 @@ def O2_data(param,temp):
 
 # ------------------------------------------------------------------------------
 
-def Fe_data(param,temp):
+def Fe_data(index,param,temp):
     R = 8.3144598
+    
+    poly = [[1.350490931e+04, -7.803806250e+02, 9.440171470e+00, -2.521767704e-02,
+             5.350170510e-05,-5.099094730e-08, 1.993862728e-11,  2.416521408e+03],  
 
-    intervals = [200,500,800,1042,1184,1665,1809,6000]
-    
-    poly0 = [1.350490931e+04, -7.803806250e+02, 9.440171470e+00, -2.521767704e-02,
-             5.350170510e-05,-5.099094730e-08, 1.993862728e-11,  2.416521408e+03]
-    
-    poly1 = [3.543032740e+06, -2.447150531e+04, 6.561020930e+01, -7.043929680e-02,
-             3.181052870e-05, 0.000000000e+00, 0.000000000e+00, 1.345059978e+05]
-    
-    poly2 = [2.661026334e+09, -7.846827970e+06, -7.289212280e+02, 2.613888297e+01,
-             -3.494742140e-02, 1.763752622e-05, -2.907723254e-09, 5.234868470e+07]
-    
-    poly3 = [2.481923052e+08, 0.000000000e+00, -5.594349090e+02, 3.271704940e-01,
-             0.000000000e+00, 0.000000000e+00, 0.000000000e+00, 6.467503430e+05]
-    
-    poly4 = [1.442428576e+09, -5.335491340e+06, 8.052828000e+03, -6.303089630e+00,
-             2.677273007e-03, -5.750045530e-07, 4.718611960e-11, 3.264264250e+07]
+            [3.543032740e+06, -2.447150531e+04, 6.561020930e+01, -7.043929680e-02,
+             3.181052870e-05, 0.000000000e+00, 0.000000000e+00, 1.345059978e+05],    
 
-    poly5 = [-3.450190030e+08, 0.000000000e+00, 7.057501520e+02, -5.442977890e-01,
-             1.190040139e-04, 0.000000000e+00, 0.000000000e+00, -8.045725750e+05]
+            [2.661026334e+09, -7.846827970e+06, -7.289212280e+02, 2.613888297e+01,
+             -3.494742140e-02, 1.763752622e-05, -2.907723254e-09, 5.234868470e+07],
     
-    poly6 = [0.000000000e+00, 0.000000000e+00, 5.535383324e+00, 0.000000000e+00, 
-             0.000000000e+00, 0.000000000e+00, 0.000000000e+00, -1.270608703e+03]
+            [2.481923052e+08, 0.000000000e+00, -5.594349090e+02, 3.271704940e-01,
+             0.000000000e+00, 0.000000000e+00, 0.000000000e+00, 6.467503430e+05],
     
-    poly = np.array([poly0, poly1, poly2, poly3, poly4, poly5, poly6])
+            [1.442428576e+09, -5.335491340e+06, 8.052828000e+03, -6.303089630e+00,
+             2.677273007e-03, -5.750045530e-07, 4.718611960e-11, 3.264264250e+07],
 
-    for i in range(len(intervals)):
-        if intervals[i] <= temp and temp < intervals[i+1]:
+            [-3.450190030e+08, 0.000000000e+00, 7.057501520e+02, -5.442977890e-01,
+             1.190040139e-04, 0.000000000e+00, 0.000000000e+00, -8.045725750e+05],
+    
+            [0.000000000e+00, 0.000000000e+00, 5.535383324e+00, 0.000000000e+00, 
+             0.000000000e+00, 0.000000000e+00, 0.000000000e+00, -1.270608703e+03]]
 
-            if param=='h' and np.abs(intervals[i]-temp) < 5 and i>0:
-                var1 = intervals[i] - 5
-                var2 = intervals[i] + 5
-                param1 = Fe_data(param,var1)
-                param2 = Fe_data(param,var2)
-                var3 = param1 + (param2 - param1)*(temp - var1)/(var2-var1)
-                return var3
-
-            if param=='h' and np.abs(intervals[i+1]-temp) < 5 and i+1 < len(intervals)-1:
-                var1 = intervals[i+1] - 5
-                var2 = intervals[i+1] + 5
-                param1 = Fe_data(param,var1)
-                param2 = Fe_data(param,var2)
-                var3 = param1 + (param2 - param1)*(temp - var1)/(var2-var1)
-                return var3
-
-            coeff = poly[i]
-            break
+    coeff = poly[index]
     
     if param == 'h':
         H = -coeff[0]/temp + coeff[1]*np.log(temp) + ((((coeff[6]/5*temp + \
@@ -181,40 +148,16 @@ def Fe_data(param,temp):
     
 # ------------------------------------------------------------------------------
 
-def FeO_data(param,temp):
+def FeO_data(index,param,temp):
     R = 8.3144598
 
-    intervals = [298.15,1652,6000]
+    poly = [[-1.179193966e+04, 1.388393372e+02, 2.999841854e+00, 1.274527210e-02,
+             -1.883886065e-05, 1.274258345e-08, -3.042206479e-12, -3.417350500e+04],
     
-    poly0 = [-1.179193966e+04, 1.388393372e+02, 2.999841854e+00, 1.274527210e-02,
-             -1.883886065e-05, 1.274258345e-08, -3.042206479e-12, -3.417350500e+04]
+            [0.000000000e+00, 0.000000000e+00, 8.147077819e+00, 0.000000000e+00,
+             0.000000000e+00, 0.000000000e+00, 0.000000000e+00, -3.255080650e+04]]
     
-    poly1 = [0.000000000e+00, 0.000000000e+00, 8.147077819e+00, 0.000000000e+00,
-             0.000000000e+00, 0.000000000e+00, 0.000000000e+00, -3.255080650e+04]
-    
-    poly = np.array([poly0, poly1])
-
-    for i in range(len(intervals)):
-        if intervals[i] <= temp and temp < intervals[i+1]:
-
-            if param=='h' and np.abs(intervals[i]-temp) < 5 and i>0:
-                var1 = intervals[i] - 5
-                var2 = intervals[i] + 5
-                param1 = FeO_data(param,var1)
-                param2 = FeO_data(param,var2)
-                var3 = param1 + (param2 - param1)*(temp - var1)/(var2-var1)
-                return var3
-
-            if param=='h' and np.abs(intervals[i+1]-temp) < 5 and i+1<len(intervals)-1:
-                var1 = intervals[i+1] - 5
-                var2 = intervals[i+1] + 5
-                param1 = FeO_data(param,var1)
-                param2 = FeO_data(param,var2)
-                var3 = param1 + (param2 - param1)*(temp - var1)/(var2-var1)
-                return var3
-
-            coeff = poly[i]
-            break
+    coeff = poly[index]
     
     if param == 'h':
         H = -coeff[0]/temp + coeff[1]*np.log(temp) + ((((coeff[6]/5*temp + \
@@ -232,4 +175,89 @@ def FeO_data(param,temp):
         return Cp
 
 # ==============================================================================
+
+def newtonFeFeO(m_Fe,m_FeO,Hp,T0,tol,maxiter):
+
+    Fe_range = 0
+    FeO_range = 0
+    for i in range(len(Fe_intervals)-1):
+        if T0 <= Fe_intervals[i+1]:
+            Fe_range = i
+            break
+    
+    for i in range(len(FeO_intervals)-1):
+        if T0 <= FeO_intervals[i+1]:
+            FeO_range = i
+            break
+
+    Ts = np.max([Fe_intervals[Fe_range],FeO_intervals[FeO_range]])
+    Te = np.min([Fe_intervals[Fe_range+1],FeO_intervals[FeO_range+1]])
+
+    count = 0
+    while count<maxiter:
+        count+=1
+
+        Ts = np.min([Fe_intervals[Fe_range],FeO_intervals[FeO_range]])
+        Te = np.min([Fe_intervals[Fe_range+1],FeO_intervals[FeO_range+1]])
+
+        H0 = m_Fe / W_Fe * Fe_data(Fe_range,'h',T0) + m_FeO / W_FeO * FeO_data(FeO_range,'h',T0) - Hp #- H0_FeO / W_FeO * m_FeO
+        Cp0 = m_Fe / W_Fe * Fe_data(Fe_range,'cp',T0) + m_FeO / W_FeO * FeO_data(FeO_range,'cp',T0)
+
+        T1 = T0 - H0/Cp0
+
+        if T1 > Te:
+            Hs = m_Fe / W_Fe * Fe_data(Fe_range,'h',Te) + m_FeO / W_FeO * FeO_data(FeO_range,'h',Te)
+
+            if T1 > Fe_intervals[Fe_range+1]:
+                He = m_Fe / W_Fe * Fe_data(Fe_range+1,'h',Te)
+            else:
+                He = m_Fe / W_Fe * Fe_data(Fe_range,'h',Te)
+
+            if T1 > FeO_intervals[FeO_range+1]:
+                He += m_FeO / W_FeO * FeO_data(FeO_range+1,'h',Te)
+            else:
+                He+= m_FeO / W_FeO * FeO_data(FeO_range,'h',Te)
+
+            if Hp > Hs:
+                if Hp < He:
+                    return Te
+                else:
+                    if T1 >= Fe_intervals[Fe_range+1]:
+                        Fe_range+=1
+                    if T1 >= FeO_intervals[FeO_range+1]:
+                        FeO_range+=1
+                    T1 = Te
+            else:
+                T1 = Te
+
+        elif T1 < Ts:
+            He = m_Fe / W_Fe * Fe_data(Fe_range,'h',Ts) + m_FeO / W_FeO * FeO_data(FeO_range,'h',Ts)
+
+            if T1 < Fe_intervals[Fe_range]:
+                Hs = m_Fe / W_Fe * Fe_data(Fe_range-1,'h',Ts)
+            else:
+                Hs = m_Fe / W_Fe * Fe_data(Fe_range,'h',Ts)
+
+            if T1 < FeO_intervals[FeO_range]:
+                Hs += m_FeO / W_FeO * FeO_data(FeO_range-1,'h',Ts)
+            else:
+                Hs+= m_FeO / W_FeO * FeO_data(FeO_range,'h',Ts)
+
+            if Hp < He:
+                if Hp > Hs:
+                    return Te
+                else:
+                    if T1 < Fe_intervals[Fe_range]:
+                        Fe_range-=1
+                    if T1 < FeO_intervals[FeO_range]:
+                        FeO_range-=1
+                    T1 = Te
+                    return T1
+            else:
+                T1 = Te
+
+        elif np.abs(T1-T0) < tol:
+                return T1
+        else:
+                T0 = T1
 

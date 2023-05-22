@@ -38,6 +38,8 @@ R = 8.3144598       # real gas constant in J/mol/K
 # X_N2 = 0.7808       # mole fraction of N2 in air
 X_O2 = 0.2095       # mole fraction of O2 in air
 factor = 1/2        # boundary layer factor   
+Fe_intervals = [200,500,800,1042,1184,1665,1809,6000]
+FeO_intervals = [298.15,1652,6000]
 
 # ==============================================================================
 
@@ -57,7 +59,20 @@ nu_O2_FeO = 0.5 * W_O2 / W_FeO
 nu_Fe_O2 = W_Fe / W_O2 / 0.5
 nu_FeO_O2 = W_FeO / W_O2 / 0.5
 
-Hp = m_Fe / (W_Fe) * Fe_data('h',Tp) + m_FeO / (W_FeO) * FeO_data('h',Tp)
+Fe_range = 0
+FeO_range = 0
+
+for i in range(len(Fe_intervals)-1):
+    if Tp < Fe_intervals[i+1]:
+        Fe_range = i
+        break
+
+for i in range(len(FeO_intervals)-1):
+    if Tp < Fe_intervals[i+1]:
+        FeO_range = i
+        break
+
+Hp = m_Fe / (W_Fe) * Fe_data(Fe_range,'h',Tp) + m_FeO / (W_FeO) * FeO_data(FeO_range,'h',Tp)
 
 gas_f = ct.Solution('air_iron3.yaml')
 if evapflag: gas_p = ct.Solution('air_iron3.yaml')
@@ -168,9 +183,10 @@ while time <= end:
     Hp += Hdot * tstep 
 
     # DETERMINE PARTICLE TEMPERATURE
+    # Tp = newtonFeFeO(m_Fe,m_FeO,Hp,T0=Tp,tol=1e-2,maxiter=1000)
 
     try:
-        Tp = newton(Tp_eqn, x0=Tp, args=(m_Fe,m_FeO,Hp),maxiter=1000,tol=1)
+        Tp = newtonFeFeO(m_Fe,m_FeO,Hp,T0=Tp,tol=1e-2,maxiter=1000)
     except:
         print('Error!')
         break
@@ -194,8 +210,11 @@ while time <= end:
     time+=tstep
     iter+=1
 
-    print(np.round(time*1000,3),'ms, T =',np.round(Tp, 3),'K,', int(time/end*100), '%% done.')#, end='\r') 
-
+    try:
+        print(np.round(time*1000,3),'ms, T =',np.round(Tp, 3),'K,', int(time/end*100), '%% done.')#, end='\r') 
+    except:
+        print(time)
+        break
 # PLOTS
 
 plt.figure(num=4)
@@ -222,8 +241,8 @@ axs[1].set_xlim([0,times[-1]])
 fig.tight_layout()
 fig.savefig('rates.png')
 
-plt.figure(num=1, figsize=(10,10))
-fig,axs = plt.subplots(nrows=2, ncols=2, figsize=(10,10))
+plt.figure(num=1, figsize=(6,6),dpi=300)
+fig,axs = plt.subplots(nrows=2, ncols=2, figsize=(6,6))
 axs[0,0].plot(times, temps)
 axs[0,0].set_xlabel('$t$ [ms]')
 axs[0,0].set_ylabel('$T_\mathrm{p}$ [K]')
