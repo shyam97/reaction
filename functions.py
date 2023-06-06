@@ -135,7 +135,6 @@ def Fe_data(index,param,temp):
         H = -coeff[0]/temp + coeff[1]*np.log(temp) + ((((coeff[6]/5*temp + \
             coeff[5]/4)*temp + coeff[4]/3)*temp + coeff[3]/2)*temp + coeff[2])*temp + \
             coeff[7]
-        
         H = H*R
         return H
     
@@ -245,16 +244,16 @@ def newtonFeFeO(m_Fe,m_FeO,Hp,T0,tol,maxiter):
 
             if Hp < He:
                 if Hp > Hs:
-                    return Te
+                    return Ts
                 else:
                     if T1 < Fe_intervals[Fe_range]:
                         Fe_range-=1
                     if T1 < FeO_intervals[FeO_range]:
                         FeO_range-=1
-                    T1 = Te
-                    return T1
+                    T1 = Ts
+                    # return T1
             else:
-                T1 = Te
+                T1 = Ts
 
         elif np.abs(T1-T0) < tol:
                 return T1
